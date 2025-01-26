@@ -1,0 +1,101 @@
+City,Date,Condition,Temperature
+Paris,2025-01-30,Rainy,27
+Paris,2025-02-01,Rainy,-1
+Paris,2025-01-31,Cloudy,-3
+Paris,2025-01-30,Rainy,26
+Paris,2025-02-04,Stormy,9
+Paris,2025-01-29,Windy,-3
+Paris,2025-02-02,Cloudy,2
+Paris,2025-01-30,Rainy,10
+Paris,2025-01-31,Rainy,5
+Paris,2025-01-28,Sunny,10
+New York,2025-02-04,Snowy,8
+New York,2025-01-29,Windy,26
+New York,2025-02-02,Cloudy,12
+New York,2025-01-27,Snowy,25
+New York,2025-01-31,Snowy,29
+New York,2025-02-03,Sunny,23
+New York,2025-02-01,Stormy,16
+New York,2025-01-26,Rainy,30
+New York,2025-01-27,Windy,3
+New York,2025-02-01,Windy,26
+Tokyo,2025-02-03,Sunny,15
+Tokyo,2025-01-31,Sunny,26
+Tokyo,2025-01-26,Cloudy,24
+Tokyo,2025-01-31,Rainy,27
+Tokyo,2025-01-29,Cloudy,6
+Tokyo,2025-01-31,Snowy,14
+Tokyo,2025-01-30,Sunny,33
+Tokyo,2025-02-02,Snowy,30
+Tokyo,2025-01-26,Snowy,-5
+Tokyo,2025-01-28,Rainy,13
+London,2025-02-01,Stormy,14
+London,2025-02-02,Stormy,4
+London,2025-01-27,Windy,29
+London,2025-01-31,Sunny,23
+London,2025-01-27,Stormy,30
+London,2025-01-31,Sunny,27
+London,2025-02-03,Stormy,32
+London,2025-01-26,Snowy,28
+London,2025-01-27,Snowy,23
+London,2025-01-28,Sunny,28
+Berlin,2025-01-30,Snowy,13
+Berlin,2025-01-29,Stormy,1
+Berlin,2025-01-30,Cloudy,35
+Berlin,2025-01-31,Rainy,30
+Berlin,2025-01-31,Cloudy,9
+Berlin,2025-02-02,Rainy,20
+Berlin,2025-02-01,Windy,10
+Berlin,2025-01-27,Windy,-5
+Berlin,2025-01-27,Snowy,13
+Berlin,2025-01-27,Snowy,20
+Dubai,2025-01-31,Stormy,33
+Dubai,2025-01-26,Snowy,-3
+Dubai,2025-02-02,Stormy,6
+Dubai,2025-01-29,Snowy,14
+Dubai,2025-02-02,Sunny,6
+Dubai,2025-02-04,Rainy,16
+Dubai,2025-01-26,Cloudy,33
+Dubai,2025-02-02,Windy,31
+Dubai,2025-02-03,Windy,25
+Dubai,2025-01-26,Rainy,-2
+Singapore,2025-01-28,Windy,19
+Singapore,2025-01-27,Rainy,14
+Singapore,2025-01-26,Cloudy,35
+Singapore,2025-01-28,Rainy,-1
+Singapore,2025-01-27,Stormy,25
+Singapore,2025-02-03,Snowy,19
+Singapore,2025-01-30,Snowy,9
+Singapore,2025-02-01,Windy,18
+Singapore,2025-01-28,Sunny,35
+Singapore,2025-02-01,Rainy,30
+Sydney,2025-02-01,Windy,29
+Sydney,2025-01-27,Stormy,3
+Sydney,2025-02-02,Snowy,13
+Sydney,2025-01-28,Stormy,27
+Sydney,2025-02-01,Snowy,11
+Sydney,2025-01-30,Windy,22
+Sydney,2025-02-03,Rainy,28
+Sydney,2025-01-30,Stormy,-2
+Sydney,2025-02-03,Windy,-2
+Sydney,2025-02-03,Rainy,1
+Mumbai,2025-02-01,Cloudy,19
+Mumbai,2025-01-27,Sunny,-5
+Mumbai,2025-02-03,Cloudy,0
+Mumbai,2025-02-02,Stormy,15
+Mumbai,2025-01-31,Snowy,27
+Mumbai,2025-01-29,Stormy,27
+Mumbai,2025-01-30,Windy,8
+Mumbai,2025-01-30,Rainy,23
+Mumbai,2025-02-03,Stormy,6
+Mumbai,2025-02-04,Cloudy,25
+Hong Kong,2025-02-04,Rainy,-2
+Hong Kong,2025-01-30,Snowy,7
+Hong Kong,2025-01-29,Snowy,0
+Hong Kong,2025-01-28,Windy,1
+Hong Kong,2025-01-31,Windy,12
+Hong Kong,2025-02-01,Rainy,35
+Hong Kong,2025-01-30,Windy,33
+Hong Kong,2025-01-27,Cloudy,30
+Hong Kong,2025-01-31,Cloudy,14
+Hong Kong,2025-02-01,Sunny,-5

@@ -9,7 +9,7 @@ load_dotenv()
 
 app = FastAPI(
     title="Agent conversationnel",
-    description="API pour un agent conversationnel donné lors du TP1",
+    description="API pour un agent conversationnel pour les voyages",
     version="1.0",
 )
 

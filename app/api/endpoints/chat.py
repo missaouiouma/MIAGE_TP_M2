@@ -1,73 +1,82 @@
 from fastapi import APIRouter, HTTPException
-from models.chat import ChatRequestTP1, ChatRequestTP2, ChatRequestWithContext, ChatResponse, SummaryResponse
+from typing import List
 from services.llm_service import LLMService
-from typing import Dict, List
+from models.models import User, Message, ChatResponse, RegisterRequest, LoginRequest, AskRequest
 
 router = APIRouter()
 llm_service = LLMService()
 
-@router.post("/chat/simple", response_model=ChatResponse)
-async def chat_simple(request: ChatRequestTP1) -> ChatResponse:
+@router.post("/register", response_model=User)
+async def register_user(request: RegisterRequest):
+    """
+    Crée un nouvel utilisateur avec des informations obligatoires.
+    """
     try:
-        response = await llm_service.generate_response(request.message, session_id="default_session")
-        return ChatResponse(response=response)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        existing_user = await llm_service.get_user_by_username(request.username)
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Nom d'utilisateur déjà utilisé")
 
-@router.post("/chat/with-context", response_model=ChatResponse)
-async def chat_with_context(request: ChatRequestWithContext) -> ChatResponse:
-    try:
-        response = await llm_service.generate_response(
-            message=request.message,
-            session_id="default_session",
-            context=request.context
+        # Crée un nouvel utilisateur avec les champs obligatoires
+        new_user = await llm_service.create_user(
+            username=request.username,
+            password=request.password,
+            age=request.age,
+            loisirs=request.loisirs,
+            pays_de_naissance=request.pays_de_naissance,
+            pays_de_residence=request.pays_de_residence,
+            ville_de_residence=request.ville_de_residence,
         )
-        return ChatResponse(response=response)
+        return new_user
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la création de l'utilisateur : {str(e)}")
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequestTP2) -> ChatResponse:
-    try:
-        response = await llm_service.generate_response(
-            message=request.message,
-            session_id=request.session_id
-        )
-        return ChatResponse(response=response)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/sessions", response_model=List[str])
-async def get_all_sessions() -> List[str]:
+@router.post("/login")
+async def login_user(request: LoginRequest):
+    """
+    Authentifie un utilisateur (sans hashage).
+    """
     try:
-        sessions = await llm_service.mongo_service.get_all_sessions()
-        if not sessions:
-            raise HTTPException(status_code=404, detail="Aucune session trouvée.")
-        return sessions
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Rechercher l'utilisateur dans la base de données
+        user = await llm_service.get_user_by_username(request.username)
+        if not user:
+            raise HTTPException(status_code=401, detail="Nom d'utilisateur incorrect")
 
-@router.get("/history/{session_id}", response_model=List[Dict[str, str]])
-async def get_history(session_id: str) -> List[Dict[str, str]]:
-    try:
-        history = await llm_service.get_conversation_history(session_id)
-        if not history:
-            raise HTTPException(status_code=404, detail="Aucun historique trouvé pour cette session.")
-        for msg in history:
-            if "timestamp" in msg:
-                msg["timestamp"] = msg["timestamp"].isoformat()
-        return history
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Vérification du mot de passe en clair
+        if request.password != user.password:
+            raise HTTPException(status_code=401, detail="Mot de passe incorrect")
 
-@router.get("/summary/{session_id}", response_model=SummaryResponse)
-async def get_summary(session_id: str) -> SummaryResponse:
-    try:
-        summary_text = await llm_service.summarize_conversation(session_id)
-        return SummaryResponse(
-            full_summary=summary_text,
-            bullet_points=[], 
-            one_liner="Résumé rapide : " + summary_text[:50]
-        )
+        # Retourner les informations essentielles de l'utilisateur
+        return {
+            "user_id": user.id,
+            "username": user.username,
+            "message": "Connexion réussie"
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la connexion : {str(e)}")
+
+
+@router.post("/ask", response_model=ChatResponse)
+async def ask_question(request: AskRequest):
+    """
+    Permet à l'utilisateur de poser une question.
+    """
+    try:
+        session_id = f"{request.user_id}_session"
+        response = await llm_service.generate_response(request.question, session_id, request.user_id)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur serveur : {str(e)}")
+
+@router.get("/users/{user_id}/messages", response_model=List[Message])
+async def get_user_messages(user_id: str):
+    """
+    Récupère tous les messages pour un utilisateur donné.
+    """
+    try:
+        messages = await llm_service.get_user_messages(user_id)
+        return messages
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la récupération des messages : {str(e)}")
