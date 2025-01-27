@@ -36,7 +36,7 @@ const ChatbotPage = () => {
 
     return (
         <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-            <h2 style={{ textAlign: 'center', color: '#0077b6' }}>Chatbot</h2>
+            <h2 style={{ textAlign: 'center', color: '#0077b6' }}>AItravel</h2>
             <div
                 style={{
                     border: '1px solid #ccc',
@@ -55,7 +55,7 @@ const ChatbotPage = () => {
                             margin: '10px 0',
                         }}
                     >
-                        <strong>{msg.role === 'user' ? 'Vous' : 'Chatbot'} :</strong>{' '}
+                        <strong>{msg.role === 'user' ? 'Vous' : 'AItravel'} :</strong>{' '}
                         <span
                             style={{
                                 display: 'inline-block',
