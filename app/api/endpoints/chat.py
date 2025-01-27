@@ -89,28 +89,25 @@ async def ask_question(request: AskRequest):
 
 @router.get("/users/{user_id}/messages", response_model=List[Message])
 async def get_user_messages(user_id: str, session_id: Optional[str] = None):
-    """
-    Récupère les messages d'une session spécifique ou de toutes les sessions d'un utilisateur.
-    """
     try:
         query = {"user_id": user_id}
         if session_id:
             query["session_id"] = session_id
 
-        conversations = await llm_service.mongo_service.conversations_collection.find(query).to_list(length=None)
+        # Trouver UNE conversation (session) spécifique
+        conversation = await llm_service.mongo_service.conversations_collection.find_one(query)
 
-        if not conversations:
-            raise HTTPException(status_code=404, detail="Aucune conversation trouvée pour cet utilisateur.")
+        if not conversation:
+            return []
 
-        # Extraire les messages
-        messages = []
-        for conv in conversations:
-            messages.extend(conv.get("messages", []))
+        # Extraire les messages de cette session
+        messages = conversation.get("messages", [])
+        return [Message(**msg) for msg in messages]
 
-        return [Message(**msg) for msg in messages]  # Convertir les messages en objets Pydantic
     except Exception as e:
-        logging.error(f"Erreur lors de la récupération des messages pour l'utilisateur {user_id} : {e}")
+        logging.error(f"Erreur lors de la récupération des messages : {e}")
         raise HTTPException(status_code=500, detail="Erreur interne du serveur.")
+
     
 @router.get("/users/{user_id}/sessions", response_model=List[SessionResponse])
 async def get_user_sessions(user_id: str):
