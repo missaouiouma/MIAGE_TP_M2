@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
 from services.llm_service import LLMService
-from models.models import User, Message, ChatResponse, RegisterRequest, LoginRequest, AskRequest
-
+from models.models import User, Message, ChatResponse, RegisterRequest, LoginRequest, AskRequest, SessionResponse
+from typing import Optional
+import logging 
+from datetime import datetime
 router = APIRouter()
 llm_service = LLMService()
 
@@ -34,7 +36,7 @@ async def register_user(request: RegisterRequest):
 @router.post("/login")
 async def login_user(request: LoginRequest):
     """
-    Authentifie un utilisateur (sans hashage).
+    Authentifie un utilisateur et crée une nouvelle session.
     """
     try:
         # Rechercher l'utilisateur dans la base de données
@@ -46,37 +48,89 @@ async def login_user(request: LoginRequest):
         if request.password != user.password:
             raise HTTPException(status_code=401, detail="Mot de passe incorrect")
 
-        # Retourner les informations essentielles de l'utilisateur
+        # Créer une nouvelle session pour l'utilisateur
+        session_id = await llm_service.create_new_session(user.id)
+
+        # Retourner les informations essentielles de l'utilisateur et de la session
         return {
             "user_id": user.id,
             "username": user.username,
+            "session_id": session_id,
             "message": "Connexion réussie"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la connexion : {str(e)}")
 
-
 @router.post("/ask", response_model=ChatResponse)
 async def ask_question(request: AskRequest):
     """
-    Permet à l'utilisateur de poser une question.
+    Permet à l'utilisateur de poser une question. Crée une nouvelle session si aucune session active n'existe.
     """
     try:
-        session_id = f"{request.user_id}_session"
+        # Récupérer une session active ou en créer une nouvelle
+        session = await llm_service.mongo_service.conversations_collection.find_one(
+            {"user_id": request.user_id, "is_active": True}
+        )
+
+        if not session:
+            # Créer une nouvelle session si aucune n'existe
+            session_id = await llm_service.create_new_session(request.user_id)
+        else:
+            session_id = session["session_id"]
+
+        # Appeler la génération de réponse
         response = await llm_service.generate_response(request.question, session_id, request.user_id)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur serveur : {str(e)}")
 
+
+
+
 @router.get("/users/{user_id}/messages", response_model=List[Message])
-async def get_user_messages(user_id: str):
+async def get_user_messages(user_id: str, session_id: Optional[str] = None):
     """
-    Récupère tous les messages pour un utilisateur donné.
+    Récupère les messages d'une session spécifique ou de toutes les sessions d'un utilisateur.
     """
     try:
-        messages = await llm_service.get_user_messages(user_id)
-        return messages
-    except HTTPException as e:
-        raise e
+        query = {"user_id": user_id}
+        if session_id:
+            query["session_id"] = session_id
+
+        conversations = await llm_service.mongo_service.conversations_collection.find(query).to_list(length=None)
+
+        if not conversations:
+            raise HTTPException(status_code=404, detail="Aucune conversation trouvée pour cet utilisateur.")
+
+        # Extraire les messages
+        messages = []
+        for conv in conversations:
+            messages.extend(conv.get("messages", []))
+
+        return [Message(**msg) for msg in messages]  # Convertir les messages en objets Pydantic
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors de la récupération des messages : {str(e)}")
+        logging.error(f"Erreur lors de la récupération des messages pour l'utilisateur {user_id} : {e}")
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur.")
+    
+@router.get("/users/{user_id}/sessions", response_model=List[SessionResponse])
+async def get_user_sessions(user_id: str):
+    """
+    Récupère toutes les sessions pour un utilisateur donné.
+    """
+    try:
+        sessions = await llm_service.mongo_service.conversations_collection.find({"user_id": user_id}).to_list(length=None)
+        if not sessions:
+            return []
+
+        return [
+            SessionResponse(
+                session_id=session["session_id"],
+                created_at=session.get("created_at", datetime.utcnow()),
+                updated_at=session.get("updated_at", datetime.utcnow()),
+                is_active=session.get("is_active", True),
+            )
+            for session in sessions
+        ]
+    except Exception as e:
+        logging.error(f"Erreur lors de la récupération des sessions pour l'utilisateur {user_id} : {e}")
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur.")

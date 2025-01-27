@@ -61,3 +61,10 @@ class LoginRequest(BaseModel):
 class AskRequest(BaseModel):
     user_id: str
     question: str
+
+class SessionResponse(BaseModel):
+    session_id: str
+    created_at: datetime = datetime.utcnow()
+    updated_at: datetime = datetime.utcnow()
+    is_active: bool
+

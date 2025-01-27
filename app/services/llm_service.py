@@ -102,6 +102,44 @@ class LLMService:
         )
         await self.mongo_service.users_collection.insert_one(new_user.dict())
         return new_user
+    
+    async def create_new_session(self, user_id: str) -> str:
+        """
+        Crée une nouvelle session pour l'utilisateur et marque les sessions existantes comme inactives.
+        """
+        try:
+            # Marquer les sessions existantes comme inactives
+            await self.mongo_service.conversations_collection.update_many(
+                {"user_id": user_id, "is_active": True},
+                {"$set": {"is_active": False}}
+            )
+
+            # Créer une nouvelle session
+            session_id = f"{user_id}_session_{uuid4()}"
+            new_session = {
+                "session_id": session_id,
+                "user_id": user_id,
+                "messages": [],
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+                "is_active": True,  # Nouvelle session active
+            }
+            await self.mongo_service.conversations_collection.insert_one(new_session)
+
+            return session_id
+        except Exception as e:
+            logging.error(f"Erreur lors de la création d'une nouvelle session pour l'utilisateur {user_id} : {e}")
+            raise HTTPException(status_code=500, detail="Erreur lors de la création d'une nouvelle session.")
+
+
+
+    
+    async def get_conversations_by_user(self, user_id: str) -> List[Conversation]:
+        """
+        Récupère toutes les conversations d'un utilisateur.
+        """
+        conversations = await self.mongo_service.conversations_collection.find({"user_id": user_id}).to_list(length=None)
+        return [Conversation(**conv) for conv in conversations]
 
     async def generate_response(self, message: str, session_id: str, user_id: str) -> ChatResponse:
         try:
@@ -199,17 +237,27 @@ class LLMService:
 
 
     async def save_message(self, session_id: str, user_id: str, message: Message):
+        """
+        Sauvegarde un message dans la session correspondante.
+        """
         try:
+            # Vérifier si la session existe
+            session = await self.mongo_service.conversations_collection.find_one({"session_id": session_id})
+            if not session:
+                raise HTTPException(status_code=404, detail="Session introuvable.")
+
+            # Ajouter le message à la session
             await self.mongo_service.conversations_collection.update_one(
                 {"session_id": session_id},
                 {
                     "$push": {"messages": message.dict()},
-                    "$set": {"user_id": user_id, "updated_at": datetime.utcnow()}
-                },
-                upsert=True
+                    "$set": {"updated_at": datetime.utcnow()}
+                }
             )
         except Exception as e:
-            logging.error(f"Erreur lors de la sauvegarde du message : {str(e)}")
+            logging.error(f"Erreur lors de la sauvegarde du message pour la session {session_id} : {e}")
+            raise HTTPException(status_code=500, detail="Erreur lors de la sauvegarde du message.")
+
 
     async def get_flights_info(self, origin_city: str, destination_city: str, departure_date: Optional[str] = None) -> str:
         logging.info(f"Recherche de vols de {origin_city} à {destination_city}, date : {departure_date}")
@@ -274,7 +322,7 @@ class LLMService:
             query = {"ville": city}
 
             if cuisine:
-                query["cuisine"] = {"$regex": cuisine, "$options": "i"}  # Recherche insensible à la casse
+                query["cuisine"] = {"$regex": cuisine, "$options": "i"}  
             if budget:
                 query["budget"] = budget
             if rating:
