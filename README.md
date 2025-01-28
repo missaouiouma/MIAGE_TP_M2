@@ -10,8 +10,8 @@ C:.
 │   └───router.py         # Router principal regroupant tous les endpoints
 ├───core/                  # Configuration et éléments centraux de l'application
 ├───models/               # Modèles de données Pydantic
-│   └───chat.py          # Modèles pour les requêtes/réponses de chat
-|   └───conversation.py  
+│   |                     # Modèles pour les requêtes/réponses de chat
+|   └───models.py  
 ├───services/            # Services métier
 │   └───llm_service.py   # Service d'interaction avec le LLM
 |   └───memory.py 
@@ -21,12 +21,12 @@ C:.
 └───main.py   # Point d'entrée de l'application
 ├───chatbot-frontend/
    └──   src/
-      ├── components/
-      │   ├── ChatWindow.jsx
-      │   ├── MessageInput.jsx
-      │   ├── Message.jsx
-      │   └── ConversationsList.jsx
-      ├── services/
+      ├── pages/
+      │   ├── ChatbotPage.jsx
+      │   ├── LoginPage.jsx
+      │   ├── RegisterPage.jsx
+      │  
+      ├── api/
       │   └── api.js
       └── App.jsx
 
