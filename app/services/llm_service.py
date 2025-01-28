@@ -3,13 +3,14 @@ import json
 import logging
 import pandas as pd
 from datetime import datetime
+from datetime import timedelta
 from typing import List, Dict, Optional
 from uuid import uuid4
 
 from fastapi import HTTPException
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI
-
+from langchain.schema import FunctionMessage
 from models.models import User, Message, ChatResponse, Conversation
 from services.mongo_service import MongoService
 from datetime import datetime
@@ -144,89 +145,84 @@ class LLMService:
     async def generate_response(self, message: str, session_id: str, user_id: str) -> ChatResponse:
         try:
             logging.info(f"Début de `generate_response` pour le message: {message}, session_id: {session_id}, user_id: {user_id}")
-            
-            # Initialisation des messages
+
+            # Initialisation des messages avec instructions pour le LLM
             messages = [
-                    SystemMessage(content=(
-                        "Vous êtes un assistant de voyage spécialisé dans la recherche d'informations en temps réel. "
-                        "Lorsque l'utilisateur pose une question nécessitant des données spécifiques comme les vols, hôtels, restaurants ou météo, "
-                        "vous devez obligatoirement utiliser les fonctions disponibles pour fournir une réponse précise. "
-                        "Si une fonction est définie pour répondre à une question, appelez-la avec les arguments appropriés. "
-                        "N'essayez pas de répondre directement avec du texte si une fonction est pertinente."
-                        "Si le prompt de l'assistant contient nom d'une ville, tu utilises OBLIGATOIREMENT function_call pour répondre."
-                    ))
-                      ]
-            logging.info("SystemMessage ajouté aux messages.")
+                SystemMessage(content=(
+                    "Vous êtes un assistant intelligent spécialisé dans la recherche d'informations pratiques (hôtels, restaurants, vols, météo). "
+                    "Utilisez toujours les fonctions pour fournir des informations précises, puis reformulez de manière claire pour l'utilisateur."
+                ))
+            ]
 
             # Récupération de la conversation existante
             conv_data = await self.mongo_service.conversations_collection.find_one({"session_id": session_id})
             if conv_data:
-                logging.info(f"Conversation trouvée pour session_id: {session_id}. Ajout des messages existants.")
                 for msg in conv_data.get("messages", []):
-                    if msg["role"] == "user":
+                    if msg.get("role") == "user":
                         messages.append(HumanMessage(content=msg["content"]))
-                    else:
+                    elif msg.get("role") == "assistant":
                         messages.append(AIMessage(content=msg["content"]))
-            
-            # Ajout du message utilisateur actuel
-            user_msg = Message(
-                id=str(uuid4()),
-                role="user",
-                user_id=user_id,
-                content=message,
-                timestamp=datetime.utcnow()
-            )
-            messages.append(HumanMessage(content=message))
-            logging.info(f"Message utilisateur ajouté: {message}")
 
-            # Génération de réponse avec le modèle
+            # Ajout du message utilisateur actuel
+            user_msg = HumanMessage(content=message)
+            messages.append(user_msg)
+
+            # Appel initial au LLM
             response = await self.chat_model.agenerate(
                 [messages],
                 functions=FUNCTION_DEFINITIONS,
                 function_call="auto"
             )
             llm_message = response.generations[0][0].message
-            logging.info(f"Réponse du modèle obtenue : {llm_message}")
+            logging.info(f"Réponse brute du LLM : {llm_message}")
 
-            # Traitement du function_call
-            response_text = ""
-            suggestions = []
-
+            # Si un `function_call` est détecté
             function_call = llm_message.additional_kwargs.get("function_call")
             if function_call:
                 fn_name = function_call["name"]
                 args = json.loads(function_call.get("arguments", "{}"))
-                logging.info(f"Function call détecté: {fn_name} avec arguments: {args}")
 
                 if hasattr(self, fn_name):
                     try:
-                        logging.info(f"Appel de la fonction: {fn_name} avec arguments: {args}")
-                        response_text = await getattr(self, fn_name)(**args)
-                        logging.info(f"Réponse de la fonction `{fn_name}`: {response_text}")
+                        logging.info(f"Appel de la fonction `{fn_name}` avec arguments: {args}")
+                        function_response = await getattr(self, fn_name)(**args)
+                        logging.info(f"Réponse de la fonction `{fn_name}`: {function_response}")
+
+                        if "Aucun" in function_response:
+                            final_message = function_response  # Pas besoin de reformuler si aucun résultat
+                        else:
+                            # Ajouter les résultats pour reformulation
+                            messages.append(FunctionMessage(
+                                name=fn_name, 
+                                content=function_response,
+                            ))                            
+                            refined_response = await self.chat_model.agenerate([messages])
+
+                            # Si la reformulation est vide, utilise les données brutes formatées
+                            if refined_response.generations[0][0].message.content.strip():
+                                final_message = refined_response.generations[0][0].message.content
+                            else:
+                                logging.warning("Reformulation vide. Utilisation des résultats bruts.")
+                                final_message = f"Voici les résultats trouvés :\n{function_response}"
+
                     except Exception as e:
-                        logging.error(f"Erreur lors de l'appel de la fonction `{fn_name}`: {str(e)}")
-                        response_text = "Une erreur s'est produite lors de l'appel à la fonction."
+                        logging.error(f"Erreur lors de l'appel de la fonction `{fn_name}` : {str(e)}")
+                        final_message = "Une erreur est survenue lors de l'obtention des données. Veuillez réessayer."
                 else:
                     logging.warning(f"Fonction `{fn_name}` non implémentée.")
-                    response_text = "Fonctionnalité non disponible."
+                    final_message = "Désolé, cette fonctionnalité n'est pas encore disponible."
+
             else:
-                logging.info("Aucun function_call détecté.")
-                response_text = llm_message.content
+                # Si aucun function_call détecté
+                logging.warning("Aucun function_call détecté.")
+                final_message = llm_message.content or "Je n'ai pas compris votre demande. Pouvez-vous préciser ?"
 
-            # Sauvegarde des messages dans la conversation
-            assistant_msg = Message(
-                id=str(uuid4()),
-                role="assistant",
-                user_id=user_id,
-                content=response_text,
-                timestamp=datetime.utcnow()
-            )
+            # Sauvegarde des messages dans la base de données
+            assistant_msg = AIMessage(content=final_message)
             await self.save_message(session_id, user_id, user_msg)
-            logging.info(f"Message utilisateur sauvegardé : {user_msg.dict()}")
             await self.save_message(session_id, user_id, assistant_msg)
-            logging.info(f"Message assistant sauvegardé : {assistant_msg.dict()}")
 
-            return ChatResponse(response=response_text, suggestions=suggestions)
+            return ChatResponse(response=final_message)
 
         except Exception as e:
             logging.error(f"Erreur dans `generate_response` : {str(e)}")
@@ -234,7 +230,6 @@ class LLMService:
                 response="Une erreur critique est survenue. Veuillez réessayer plus tard.",
                 suggestions=["Réessayer", "Contacter le support"]
             )
-
 
     async def save_message(self, session_id: str, user_id: str, message: Message):
         """
@@ -259,6 +254,7 @@ class LLMService:
             raise HTTPException(status_code=500, detail="Erreur lors de la sauvegarde du message.")
 
 
+
     async def get_flights_info(self, origin_city: str, destination_city: str, departure_date: Optional[str] = None) -> str:
         logging.info(f"Recherche de vols de {origin_city} à {destination_city}, date : {departure_date}")
 
@@ -269,14 +265,30 @@ class LLMService:
             }
 
             if departure_date:
-                query["date_de_depart"] = departure_date
+                try:
+                    # Convertir "2024-03" en une plage de dates
+                    start_date = datetime.strptime(departure_date, "%Y-%m")
+                    # Calculer la fin du mois
+                    if start_date.month == 12:
+                        end_date = datetime(start_date.year + 1, 1, 1)
+                    else:
+                        end_date = datetime(start_date.year, start_date.month + 1, 1)
 
-            # Utilisation correcte de to_list()
+                    query["date_de_depart"] = {
+                        "$gte": start_date,
+                        "$lt": end_date
+                    }
+                except ValueError:
+                    logging.error("Format de date invalide. Utilisez 'YYYY-MM'.")
+                    return "Format de date invalide. Utilisez 'YYYY-MM'."
+
+            # Utilisation correcte de to_list() pour récupérer les résultats
             flights = await self.mongo_service.db["vols"].find(query).to_list(length=None)
 
             if not flights:
                 return f"Aucun vol disponible entre {origin_city} et {destination_city} à la date spécifiée."
 
+            # Formater les résultats des vols
             return "\n".join([
                 f"Vol {flight.get('numero_de_vol', 'N/A')} ({flight.get('compagnie_aerienne', 'N/A')}) | "
                 f"Départ : {flight.get('date_de_depart', 'N/A')} {flight.get('heure_de_depart', 'N/A')} | "
@@ -287,6 +299,7 @@ class LLMService:
         except Exception as e:
             logging.error(f"Erreur lors du chargement des vols : {str(e)}")
             return "Service des vols temporairement indisponible."
+
 
 
     async def get_hotels_info(self, city: str, stars: Optional[int] = None) -> str:
@@ -305,7 +318,7 @@ class LLMService:
                 return f"Aucun hôtel trouvé à {city}."
 
             return "\n\n".join([
-                f"{hotel.get('nom_de_lhotel', 'N/A')} ({hotel.get('etoiles', 'N/A')} étoiles)\n"
+                f"{hotel.get('nom_de_lhôtel', 'N/A')} ({hotel.get('etoiles', 'N/A')} étoiles)\n"
                 f"Adresse : {hotel.get('adresse', 'N/A')}\n"
                 f"Date de disponibilité : {hotel.get('date_de_disponibilite', 'N/A')}"
                 for hotel in hotels
@@ -338,16 +351,25 @@ class LLMService:
             if not restaurants:
                 return f"Aucun restaurant trouvé à {city}."
 
-            return "\n\n".join([
-                f"{restaurant.get('nom_du_restaurant', 'N/A')} ({restaurant.get('cuisine', 'N/A')}, "
-                f"Budget : {restaurant.get('budget', 'N/A')}, Note : {restaurant.get('evaluation', 'N/A')})\n"
-                f"Adresse : {restaurant.get('adresse', 'N/A')}"
-                for restaurant in restaurants
-            ])
+            # Construire une liste formatée avec des sauts de ligne bien placés
+            result = []
+            for restaurant in restaurants:
+                    result.append(
+                        f"Nom: {restaurant.get('nom_du_restaurant', 'N/A')}, "
+                        f"Cuisine: {restaurant.get('cuisine', 'N/A')}, "
+                        f"Budget: {restaurant.get('budget', 'N/A')}, "
+                        f"Note: {restaurant.get('evaluation', 'N/A')}, "
+                        f"Adresse: {restaurant.get('adresse', 'N/A')}"
+                    )
+
+            return "; ".join(result)  # Les résultats sont séparés par "; " pour être plus lisibles.
+
 
         except Exception as e:
             logging.error(f"Erreur lors du chargement des restaurants : {str(e)}")
             return "Service des restaurants temporairement indisponible."
+
+
 
 
     async def get_weather_info(self, city: str, date: Optional[str] = None) -> str:
